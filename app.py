@@ -3,9 +3,10 @@ import os
 from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
+import requests
 
-from forms import UserAddForm, LoginForm, MessageForm
-from models import db, connect_db, User, Message
+from forms import UserAddForm, LoginForm, MessageForm, EditProfileForm
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -18,11 +19,12 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
 
-connect_db(app)
+with app.app_context():
+    connect_db(app)
 
 
 ##############################################################################
@@ -113,7 +115,11 @@ def login():
 def logout():
     """Handle logout of user."""
 
-    # IMPLEMENT THIS
+    # IMPLEMENTED THIS
+    # session.pop(CURR_USER_KEY)
+    do_logout()
+    flash('Logout successful.', 'success')
+    return redirect('/')
 
 
 ##############################################################################
@@ -151,6 +157,27 @@ def users_show(user_id):
                 .limit(100)
                 .all())
     return render_template('users/show.html', user=user, messages=messages)
+
+# LIKED WARBLES
+@app.route('/users/<int:user_id>/likes')
+def likes(user_id):
+    """Show warbles liked by user."""
+
+    user = User.query.get_or_404(user_id)
+
+    # snagging messages in order from the database;
+    # user.messages won't be in order by default
+    # messages = (Message
+    #             .query
+    #             .filter(Message.user_id == user_id)
+    #             .order_by(Message.timestamp.desc())
+    #             .limit(100)
+    #             .all())
+
+    messages = user.likes
+    print(messages)
+    return render_template('users/likes.html', user=user, messages=messages)
+
 
 
 @app.route('/users/<int:user_id>/following')
@@ -211,8 +238,41 @@ def stop_following(follow_id):
 def profile():
     """Update profile for current user."""
 
-    # IMPLEMENT THIS
+    # IMPLEMENTED THIS
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
 
+    form = EditProfileForm(obj=g.user)
+
+    if form.validate_on_submit():
+        user = User.authenticate(g.user.username,
+                                 form.password.data)
+
+        if user:
+            # do_login(user)
+            # form.populate_obj(user)
+            # == This block didn't work ===
+            # g.user.username = form.username.data
+            # g.user.email = form.email.data
+            # g.user.image_url = form.image_url.data
+            # g.user.header_image_url = form.header_image_url
+            # g.user.bio = form.bio.data
+            # ============================
+
+            user.username = form.username.data
+            user.email = form.email.data
+            user.image_url = form.image_url.data
+            user.header_image_url = form.header_image_url.data
+            user.bio = form.bio.data
+            db.session.add(user)
+            db.session.commit()
+            flash(f"Profile updated.", "success")
+            return redirect(f"/users/{user.id}")
+
+        flash("Invalid credentials.", 'danger')
+
+    return render_template('users/edit.html', form=form)
 
 @app.route('/users/delete', methods=["POST"])
 def delete_user():
@@ -228,6 +288,28 @@ def delete_user():
     db.session.commit()
 
     return redirect("/signup")
+
+
+@app.route('/users/add_like/<int:msg_id>', methods=['POST'])
+def add_like(msg_id):
+    
+    try:
+        new_like = Likes(user_id=g.user.id,message_id=msg_id)
+        db.session.add(new_like)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        like = Likes.query.filter_by(message_id=msg_id).first()
+        db.session.delete(like)
+        db.session.commit()
+    
+    return redirect('/')
+
+
+
+        # except IntegrityError:
+        #     flash("Username already taken", 'danger')
+        #     return render_template('users/signup.html', form=form)
 
 
 ##############################################################################
@@ -292,16 +374,22 @@ def homepage():
     """
 
     if g.user:
+        # debug_messages = Message.query.filter(Message.user_id.in_([f.id for f in g.user.following])).all()
+        # print("MESSAGES CHECK", debug_messages)
+
         messages = (Message
                     .query
                     .order_by(Message.timestamp.desc())
+                    .filter(Message.user_id.in_([user.id for user in g.user.following]))
                     .limit(100)
                     .all())
-
-        return render_template('home.html', messages=messages)
+        likes = [like.id for like in g.user.likes]
+        return render_template('home.html', messages=messages, likes=likes)
 
     else:
         return render_template('home-anon.html')
+
+
 
 
 ##############################################################################

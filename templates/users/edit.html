@@ -15,7 +15,7 @@
           {{ field(placeholder=field.label.text, class="form-control") }}
         {% endfor %}
 
-        <p>To confirm changes, enter your password:</p>
+        <p>To confirm changes, verify your password:</p>
         {% if form.password.errors %}
           {% for error in form.password.errors %}
             <span class="text-danger">
@@ -23,7 +23,7 @@
           </span>
           {% endfor %}
         {% endif %}
-        {{ form.password(placeholder="Enter your password to confirm", class="form-control") }}
+        {{ form.password(placeholder="Enter password", class="form-control") }}
 
         <div class="edit-btn-area">
           <button class="btn btn-success">Edit this user!</button>
