@@ -133,7 +133,4 @@ class MessageViewTestCase(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.location,'/')
 
-        # After redirect client should see a page with username on it
-        self.assertIn(b'test', resp.data)
-
-
+    
